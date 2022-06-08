@@ -18,35 +18,38 @@ Run `pip3 install -r requirements.txt` to install the required libraries
 
 # Usage
 
-	usage: CrossSeedAutoDL.py [-h] [-p] [-d delay] -i input_path -s save_path -u
-	                          jackett_url -k api_key [-t trackers]
-	                          [--ignore-history] [--strict-size]
+	usage: CrossSeedAutoDL.py [-h] [-p] [-g] [-d delay] -i input_path -s save_path 
+                              -u jackett_url -k api_key [-t trackers] 
+                              [--ignore-history] [--strict-size] [--only-dupes]
 
-	Searches for cross-seedable torrents
+    Searches for cross-seedable torrents
 
-	optional arguments:
-	  -h, --help            show this help message and exit
-	  -p, --parse-dir       Optional. Indicates whether to search for the items inside
-	                        the input directory as individual releases
-	  -d delay, --delay delay
-	                        Pause duration (in seconds) between searches (default:
-	                        10)
-	  -i input_path, --input-path input_path
-	                        File or Folder for which to find a matching torrent
-	  -s save_path, --save-path save_path
-	                        Directory in which to store downloaded torrents
-	  -u jackett_url, --url jackett_url
-	                        URL for your Jackett instance, including port number
-	                        if needed
-	  -k api_key, --api-key api_key
-	                        API key for your Jackett instance
-	  -t trackers, --trackers trackers
-	                        Tracker(s) on which to search. Comma-separated if
-	                        multiple (no spaces). If ommitted, all trackers will
-	                        be searched.
-	  --ignore-history      Optional. Indicates whether to skip searches or downloads for files that have previously been searched/downloaded previously.
-	  --strict-size         Optional. Indicates whether to match torrent search
-	                        result sizes to exactly the size of the input path.
+    optional arguments:
+      -h, --help            show this help message and exit
+      -p, --parse-dir       Optional. Indicates whether to search for all the items
+                            inside the input directory as individual releases
+      -g, --match-release-group
+                            Optional. Indicates whether to attempt to extract a 
+                            release group name and include it in the search query.
+      -d delay, --delay delay
+                            Pause duration (in seconds) between searches (default: 10)
+      -i input_path, --input-path input_path
+                            File or Folder for which to find a matching torrent
+      -s save_path, --save-path save_path
+                            Directory in which to store downloaded torrents
+      -u jackett_url, --url jackett_url
+                            URL for your Jackett instance, including port number if needed
+      -k api_key, --api-key api_key
+                            API key for your Jackett instance
+      -t trackers, --trackers trackers
+                            Tracker(s) on which to search. Comma-separated if 
+                            multiple (no spaces). If ommitted, all trackers will be searched.
+      --ignore-history      Optional. Indicates whether to skip searches or downloads for files
+                            that have previously been searched/downloaded previously.
+      --strict-size         Optional. Indicates whether to match torrent search result sizes to 
+                            exactly the size of the input path. Might miss otherwise cross-seedtable 
+                            torrents that contain additional files such as .nfo files
+      --only-dupes          Optional. Indicates whether to skip downloads for searches with only one match.
 
 
 Examples:
