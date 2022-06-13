@@ -6,24 +6,53 @@ import logging
 import os
 import platform
 import re
+import xmlrpc.client
+
 import requests
 import shutil
 import time
 from guessit import guessit
 from urllib.parse import urlencode
+from xmlrpc.client import ServerProxy, Error, ProtocolError, ResponseError, Fault
+from rtorrent_scgi import SCGIServerProxy
+from http.client import HTTPException, RemoteDisconnected
 
 parser = argparse.ArgumentParser(description='Searches for cross-seedable torrents')
-parser.add_argument('-p', '--parse-dir', dest='parse_dir', action='store_true', help='Optional. Indicates whether to search for all the items inside the input directory as individual releases')
-parser.add_argument('-g', '--match-release-group', dest='match_release_group', action='store_true', help='Optional. Indicates whether to attempt to extract a release group name and include it in the search query.')
-parser.add_argument('-d', '--delay', metavar='delay', dest='delay', type=int, default=10, help='Pause duration (in seconds) between searches (default: 10)')
-parser.add_argument('-i', '--input-path', metavar='input_path', dest='input_path', type=str, required=True, help='File or Folder for which to find a matching torrent')
-parser.add_argument('-s', '--save-path', metavar='save_path', dest='save_path', type=str, required=True, help='Directory in which to store downloaded torrents')
-parser.add_argument('-u', '--url', metavar='jackett_url', dest='jackett_url', type=str, required=True, help='URL for your Jackett instance, including port number if needed')
-parser.add_argument('-k', '--api-key', metavar='api_key', dest='api_key', type=str, required=True, help='API key for your Jackett instance')
-parser.add_argument('-t', '--trackers', metavar='trackers', dest='trackers', type=str, default=None, required=False, help='Tracker(s) on which to search. Comma-separated if multiple (no spaces). If ommitted, all trackers will be searched.')
-parser.add_argument('--ignore-history', dest='ignore_history', action='store_true', help='Optional. Indicates whether to skip searches or downloads for files that have previously been searched/downloaded previously.')
-parser.add_argument('--strict-size', dest='strict_size', action='store_true', help='Optional. Indicates whether to match torrent search result sizes to exactly the size of the input path. Might miss otherwise cross-seedtable torrents that contain additional files such as .nfo files')
-parser.add_argument('--only-dupes', dest='only_dupes', action='store_true', help='Optional. Indicates whether to skip downloads for searches with only one match.')
+parser.add_argument('-p', '--parse-dir', dest='parse_dir', action='store_true',
+                    help='Optional. Indicates whether to search for all the items inside the input directory as '
+                         'individual releases')
+parser.add_argument('-g', '--match-release-group', dest='match_release_group', action='store_true',
+                    help='Optional. Indicates whether to attempt to extract a release group name and include it in '
+                         'the search query.')
+parser.add_argument('-d', '--delay', metavar='delay', dest='delay', type=int, default=10,
+                    help='Optional. Pause duration (in seconds) between searches (default: 10)')
+parser.add_argument('-i', '--input-path', metavar='input_path', dest='input_path', type=str, required=True,
+                    help='File or Folder for which to find a matching torrent')
+parser.add_argument('-s', '--save-path', metavar='save_path', dest='save_path', type=str, required=True,
+                    help='Directory in which to store downloaded torrents')
+parser.add_argument('-j', '--jackett-url', metavar='jackett_url', dest='jackett_url', type=str, required=True,
+                    help='URL for your Jackett instance, including port number or path if needed')
+parser.add_argument('-k', '--api-key', metavar='api_key', dest='api_key', type=str, required=True,
+                    help='API key for your Jackett instance')
+parser.add_argument('-t', '--trackers', metavar='trackers', dest='trackers', type=str, default=None, required=False,
+                    help='Tracker(s) on which to search. Comma-separated if multiple (no spaces). If ommitted, '
+                         'all trackers will be searched.')
+parser.add_argument('-u', '--client-url', metavar='client_url', dest='client_url', type=str, default=None,
+                    required=False, help='Optional. Torrent client URL to fetch existing torrents from, including '
+                                         'port number or path if needed')
+parser.add_argument('-c', '--client-type', metavar='client_type', dest='client_type', type=str, default=None,
+                    required=False, help='Optional. Torrent client type. Use in conjuction with --client-address. '
+                                         'Valid values are: rtorrent')
+parser.add_argument('--ignore-history', dest='ignore_history', action='store_true',
+                    help='Optional. Indicates whether to skip searches or downloads for files that have previously '
+                         'been searched/downloaded previously.')
+parser.add_argument('--strict-size', dest='strict_size', action='store_true',
+                    help='Optional. Indicates whether to match torrent search result sizes to exactly the size of the '
+                         'input path. Might miss otherwise cross-seedable torrents that contain additional files '
+                         'such as .nfo files')
+parser.add_argument('--only-dupes', dest='only_dupes', action='store_true',
+                    help='Optional. Indicates whether to skip downloads for searches with only one match. Might miss '
+                         'cross-seedable torrents if the input files are not indexed by Jackett')
 ARGS = parser.parse_args()
 
 ARGS.input_path = os.path.expanduser(ARGS.input_path)
@@ -108,7 +137,7 @@ class Searcher:
     max_size_difference = size_differences_strictness[ARGS.strict_size]
 
     # keep these params in response json, discard the rest
-    keys_from_result = ['Tracker', 'TrackerId', 'CategoryDesc', 'Title', 'Link', 'Details', 'Category', 'Size', 'Imdb']
+    keys_from_result = ['Tracker', 'TrackerId', 'CategoryDesc', 'Title', 'Link', 'Details', 'Category', 'Size', 'Imdb', 'InfoHash']
     # torznab categories: 2000 for movies, 5000 for TV. This dict is for matching against the (str) types generated by 'guessit'
     category_types = {'movie': 2000, 'episode': 5000}
 
@@ -387,12 +416,42 @@ class HistoryManager:
             search_history['download_history'][tracker_id].append(url_path)
 
 
+def fetch_torrent_list_from_client():
+    if ARGS.client_type == 'rtorrent':
+        try:
+            if ARGS.client_url.startswith('http'):
+                with ServerProxy(ARGS.client_url) as client:
+                    infohashes = client.download_list()
+            elif ARGS.client_url.startswith('scgi'):
+                with SCGIServerProxy(ARGS.client_url) as client:
+                    infohashes = client.download_list()
+        except Error as error:
+            if isinstance(error, ProtocolError):
+                print(f'Error: HTTP Error when fetching client torrent list: {error}')
+            elif isinstance(error, ResponseError):
+                print(f'Error: received malformed XML-RPC response from torrent client: {error}')
+            elif isinstance(error, Fault):
+                print(f'Error: torrent client returned a fault code: {error}')
+            else:
+                print(f'Error: {error}')
+            exit()
+        return infohashes
+
+
 def main():
     assert_settings()
     paths = get_all_paths()
 
     search_history = HistoryManager.get_download_history()
     history_json_fd = open(HistoryManager.search_history_file_path, 'r+', encoding='utf8')
+
+    existing_torrent_hashes = None
+    if all(k is not None for k in [ARGS.client_url, ARGS.client_type]):
+        print(f"Fetching torrent list from {ARGS.client_type} client at {ARGS.client_url}")
+        logger.info(f"Fetching torrent list from {ARGS.client_type} client at {ARGS.client_url}")
+        existing_torrent_hashes = [h.upper() for h in fetch_torrent_list_from_client()]
+        print(f"Found {len(existing_torrent_hashes)} existing torrents.")
+        logger.info(f"Found {len(existing_torrent_hashes)} existing torrents.")
 
     for i, path in enumerate(paths):
         local_release_data = ReleaseData.get_release_data(path)
@@ -430,6 +489,13 @@ def main():
             logger.info('Skipping download. --only-dupes is enabled and no duplicate matches were found.')
         else:
             for result in matching_results:
+                if result['InfoHash'] is not None and result['InfoHash'].upper() in existing_torrent_hashes:
+                    print('Skipping download for [{Tracker}] {Title}: torrent exists in client'.format(**result))
+                    logger.info('Skipping download for [{Tracker}] {Title}: infohash \'{InfoHash}\' is already in '
+                                'client'.format(**result))
+                    continue
+                elif result['InfoHash'] is None:
+                    print("Found release with no infohash available: [{Tracker}] {Title}".format(**result))
                 Downloader.download(result, search_history)
 
         json.dump(search_history, history_json_fd, indent=4)
@@ -467,6 +533,33 @@ def assert_settings():
     except requests.exceptions.RequestException as e:
         print(f'"{ARGS.jackett_url}" cannot be reached: {e}')
         exit()
+    if any(k is not None for k in [ARGS.client_url, ARGS.client_type]):
+        assert ARGS.client_url.startswith('http') or ARGS.client_url.startswith('scgi'), f'Error: unknown URI scheme ' \
+                                                                                         f'\'{ARGS.client_url}\''
+        assert ARGS.client_type is not None, 'Error: you must specify a client type'
+        assert ARGS.client_type in ['rtorrent'], f'Error: unknown client type \'{ARGS.client_type}\''
+        if ARGS.client_type == 'rtorrent':
+            try:
+                if ARGS.client_url.startswith('http'):
+                    ServerProxy(ARGS.client_url).system.listMethods()
+                elif ARGS.client_url.startswith('scgi'):
+                    SCGIServerProxy(ARGS.client_url).system.listMethods()
+
+            except HTTPException as error:
+                if isinstance(error, RemoteDisconnected):
+                    print(f"Error: {ARGS.client_type} client closed connection. Are you using http for an scgi port?")
+                print(f'{type(error).__name__}: {error}')
+                exit()
+            except Error as error:
+                if isinstance(error, ProtocolError):
+                    print(f'Error: HTTP Error when contacting torrent client: {error}')
+                elif isinstance(error, ResponseError):
+                    print(f'Error: received malformed XML-RPC response from torrent client: {error}')
+                elif isinstance(error, Fault):
+                    print(f'Error: torrent client returned a fault code: {error}')
+                else:
+                    print(f'Error: {error}')
+                exit()
 
 
 if __name__ == '__main__':
