@@ -6,6 +6,8 @@ import logging
 import os
 import platform
 import re
+import bencoding as benc
+import hashlib
 from json import JSONDecodeError
 
 import requests
@@ -60,7 +62,7 @@ ARGS.input_path = os.path.expanduser(ARGS.input_path)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter('\n%(asctime)s - Module: %(module)s - Line: %(lineno)d - Message: %(message)s')
+formatter = logging.Formatter('%(asctime)s - Module: %(module)s - Line: %(lineno)d - Message: %(message)s')
 file_handler = logging.FileHandler('CrossSeedAutoDL.log', encoding='utf8')
 file_handler.setFormatter(formatter)
 
@@ -287,7 +289,7 @@ class Downloader:
                               'Icon=text-html\n'
 
     @staticmethod
-    def download(result, search_history):
+    def download(result, search_history, existing_torrent_hashes):
         release_name = Downloader._sanitize_name('[{Tracker}] {Title}'.format(**result))
 
         # if torrent file is missing, ie. Blutopia
@@ -324,8 +326,14 @@ class Downloader:
                 fd.write(data)
         else:
             response = requests.get(result['Link'], stream=True)
-            with open(file_path, 'wb') as f:
-                shutil.copyfileobj(response.raw, f)
+            info_hash = hashlib.sha1(benc.bencode(benc.bdecode(response.content)[b'info'])).hexdigest().upper()
+            if info_hash in existing_torrent_hashes:
+                print("Torrent file info hash is already loaded in torrent client, skipping download.")
+                logger.info(f"Torrent file [{result['Tracker']}] \'{result['Title']}\' info hash \'{info_hash}\' "
+                            f"matched a torrent client info hash, skipping download.")
+            else:
+                with open(file_path, 'wb') as f:
+                    shutil.copyfileobj(response.raw, f)
 
         HistoryManager.append_to_download_history(result['Details'], result['TrackerId'], search_history)
 
@@ -494,13 +502,16 @@ def main():
         else:
             for result in matching_results:
                 if result['InfoHash'] is not None and result['InfoHash'].upper() in existing_torrent_hashes:
-                    print('Skipping download for [{Tracker}] {Title}: torrent exists in client'.format(**result))
-                    logger.info('Skipping download for [{Tracker}] {Title}: infohash \'{InfoHash}\' is already in '
+                    print('Skipping release from [{Tracker}]: torrent already exists in client'.format(**result))
+                    logger.info('Skipping release [{Tracker}] {Title}: infohash \'{InfoHash}\' is already in '
                                 'client'.format(**result))
                     continue
                 elif result['InfoHash'] is None:
-                    print("Found release with no infohash available: [{Tracker}] {Title}".format(**result))
-                Downloader.download(result, search_history)
+                    print("Matched release from [{Tracker}] has no infohash available, downloading torrent to check "
+                          "infohash locally...".format(**result))
+                    logger.info("Matched release \'{Title}\' from [{Tracker}] has no infohash available, downloading "
+                                "torrent to check infohash locally...".format(**result))
+                Downloader.download(result, search_history, existing_torrent_hashes)
 
         json.dump(search_history, history_json_fd, indent=4)
         history_json_fd.seek(0)
