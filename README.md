@@ -90,16 +90,16 @@ Basic usage: search all trackers for a single item (file or folder) and download
 
 (include `-p` flag) Run a search on the `blutopia` tracker for each of the input directory's child items using default matching behavior.
 
-	python CrossSeedAutoDL.py -p -i "\\NAS\Movies" -s "./output_torrents" -u "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" -t blutopia
+	python CrossSeedAutoDL.py -p -i "\\NAS\Movies" -s "./output_torrents" -j "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" -t blutopia
         
 Search for input items on `blutopia` and `passthepopcorn`, and attempt to extract and add release group name to the Jackett search query (especially useful for remuxes which all tend to be very similar in size) See [above](#release-group-matching) for an explanation of `--match-release-group`
 
-        python CrossSeedAutoDL.py -p --match-release-group -i "\\NAS\Movies" -s "./output_torrents" -u "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" -t blutopia,passthepopcorn
+        python CrossSeedAutoDL.py -p --match-release-group -i "\\NAS\Movies" -s "./output_torrents" -j "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" -t blutopia,passthepopcorn
 
 Search for input items on all trackers, match release group names, and only download torrents with more than one match. See [above](#only-downloading-duplicates) for an explanation of `--only-dupes`
 
-        python CrossSeedAutoDL.py -p -g -i "\\NAS\Movies" -s "./output_torrents" -u "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" --only-dupes
+        python CrossSeedAutoDL.py -p -g -i "\\NAS\Movies" -s "./output_torrents" -j "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" --only-dupes
 
 Search for input items on all trackers, match release group names, and ignore torrents that are already loaded in a local rtorrent client instance. See [above](#connecting-your-torrent-client) for info on how to connect your torrent client.
 
-        python CrossSeedAutoDL.py -p -g -i "\\NAS\Movies" -s "./output_torrents" -u "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" -u "scgi://127.0.0.1:5000" -c "rtorrent"
+        python CrossSeedAutoDL.py -p -g -i "\\NAS\Movies" -s "./output_torrents" -j "http://127.0.0.1:9117" -k "cb42579eyh4j11ht5sktjswq89t89q5t" -u "scgi://127.0.0.1:5000" -c "rtorrent"
