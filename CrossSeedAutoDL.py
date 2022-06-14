@@ -325,15 +325,15 @@ class Downloader:
             with open(file_path, 'w', encoding='utf8') as fd:
                 fd.write(data)
         else:
-            response = requests.get(result['Link'], stream=True)
-            info_hash = hashlib.sha1(benc.bencode(benc.bdecode(response.content)[b'info'])).hexdigest().upper()
+            response_bytes = requests.get(result['Link'], stream=True).content
+            info_hash = hashlib.sha1(benc.bencode(benc.bdecode(response_bytes)[b'info'])).hexdigest().upper()
             if info_hash in existing_torrent_hashes:
                 print("Torrent file info hash is already loaded in torrent client, skipping download.")
                 logger.info(f"Torrent file [{result['Tracker']}] \'{result['Title']}\' info hash \'{info_hash}\' "
                             f"matched a torrent client info hash, skipping download.")
             else:
                 with open(file_path, 'wb') as f:
-                    shutil.copyfileobj(response.raw, f)
+                    f.write(response_bytes)
 
         HistoryManager.append_to_download_history(result['Details'], result['TrackerId'], search_history)
 
