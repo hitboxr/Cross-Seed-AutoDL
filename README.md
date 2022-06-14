@@ -3,6 +3,8 @@ Finds cross-seedable torrents for Movies and TV via Jackett. Parses existing fil
 
 Forked from BC44's [Cross-Seed-AutoDL](https://github.com/BC44/Cross-Seed-AutoDL) with added support for release group matching and fetching existing torrents from rtorrent. Further torrent client integrations may be implemented in the future.
 
+Note that the history functionality is a little janky right now, as it doesn't remember the options with which a torrent was searched previously (e.g. you ran the script previously with -g or --only-dupes and now you're running it without it, the script does not re-run the search even though the results could be different).
+
 Requires minimum python 3.6
 
 Requires [Jackett](https://github.com/Jackett/Jackett)
